@@ -1,9 +1,16 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import useSpeechRecognition from '../../hooks/useSpeechRecognition.js';
 import useGroqTranslation from '../../hooks/useGroqTranslation.js';
+import {
+  TOPICS,
+  DEFAULT_TOPIC_ID,
+  TOPIC_STORAGE_KEY,
+  getTopicById,
+} from '../../constants/topics.js';
 import styles from './TranslatePage.module.css';
 
 const GROQ_KEY_STORAGE = 'groqApiKey';
+const GROQ_MODEL_STORAGE = 'groqModel';
 
 function MicIcon() {
   return (
@@ -27,28 +34,40 @@ function StopIcon() {
 function TranslatePage() {
   const [translations, setTranslations] = useState([]);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [activeModel, setActiveModel] = useState('llama-3.1-8b-instant');
+  const [selectedTopicId, setSelectedTopicId] = useState(() => {
+    return localStorage.getItem(TOPIC_STORAGE_KEY) || DEFAULT_TOPIC_ID;
+  });
   const translationEndRef = useRef(null);
   const germanEndRef = useRef(null);
 
   useEffect(() => {
-    const key = localStorage.getItem(GROQ_KEY_STORAGE);
-    setHasApiKey(Boolean(key && key.trim()));
-
-    // Listen for storage changes (e.g., user saved key on account page)
-    const handler = () => {
+    const syncStorage = () => {
       const k = localStorage.getItem(GROQ_KEY_STORAGE);
       setHasApiKey(Boolean(k && k.trim()));
+      const m = localStorage.getItem(GROQ_MODEL_STORAGE);
+      setActiveModel((m && m.trim()) || 'llama-3.1-8b-instant');
     };
-    window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
+    syncStorage();
+
+    // Listen for storage changes (e.g., user saved key/model on account page)
+    window.addEventListener('storage', syncStorage);
+    return () => window.removeEventListener('storage', syncStorage);
   }, []);
+
+  const handleTopicChange = (topicId) => {
+    setSelectedTopicId(topicId);
+    localStorage.setItem(TOPIC_STORAGE_KEY, topicId);
+  };
+
+  const activeTopic = getTopicById(selectedTopicId);
 
   const { translate, isTranslating, error: translationError } = useGroqTranslation();
 
   const handleFinalResult = useCallback(
     async (finalText) => {
       if (!finalText.trim()) return;
-      const result = await translate(finalText);
+      const result = await translate(finalText, selectedTopicId);
       if (result) {
         setTranslations((prev) => [
           ...prev,
@@ -56,7 +75,7 @@ function TranslatePage() {
         ]);
       }
     },
-    [translate]
+    [translate, selectedTopicId]
   );
 
   const {
@@ -128,6 +147,28 @@ function TranslatePage() {
           <span>⚠️ {displayError}</span>
         </div>
       )}
+
+      {/* Topic Selector */}
+      <div className={styles.topicBar}>
+        <span className={styles.topicBarLabel}>Mode:</span>
+        <div className={styles.topicList} role="group" aria-label="Translation topic">
+          {TOPICS.map((topic) => (
+            <button
+              key={topic.id}
+              type="button"
+              className={`${styles.topicBtn} ${
+                selectedTopicId === topic.id ? styles.topicBtnActive : ''
+              }`}
+              onClick={() => handleTopicChange(topic.id)}
+              title={topic.description}
+            >
+              <span>{topic.icon}</span>
+              <span>{topic.label}</span>
+            </button>
+          ))}
+        </div>
+        <span className={styles.topicHint}>{activeTopic.description}</span>
+      </div>
 
       {/* Main Interface */}
       <div className={styles.panels}>
@@ -231,7 +272,10 @@ function TranslatePage() {
           🌐 de-DE → en-US
         </div>
         <div className={styles.statusItem}>
-          🤖 llama3-8b-8192
+          🤖 {activeModel}
+        </div>
+        <div className={styles.statusItem}>
+          {activeTopic.icon} {activeTopic.label}
         </div>
         {translations.length > 0 && (
           <div className={styles.statusItem}>

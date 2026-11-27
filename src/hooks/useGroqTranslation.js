@@ -1,11 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
+import { DEFAULT_TOPIC_ID, getTopicById } from '../constants/topics.js';
 
 const TRANSLATE_HISTORY_KEY = 'groqTranslationHistory';
 const GROQ_API_KEY_KEY = 'groqApiKey';
 const GROQ_MODEL_KEY = 'groqModel';
 const FALLBACK_MODEL = 'llama-3.1-8b-instant';
 
-function saveToHistory(german, english) {
+function saveToHistory(german, english, topicId) {
   try {
     const stored = localStorage.getItem(TRANSLATE_HISTORY_KEY);
     const history = stored ? JSON.parse(stored) : [];
@@ -13,6 +14,7 @@ function saveToHistory(german, english) {
       id: Date.now(),
       german,
       english,
+      topic: topicId || DEFAULT_TOPIC_ID,
       timestamp: new Date().toISOString(),
     };
     const updated = [entry, ...history].slice(0, 10);
@@ -27,7 +29,7 @@ function useGroqTranslation() {
   const [error, setError] = useState(null);
   const controllerRef = useRef(null);
 
-  const translate = useCallback(async (germanText) => {
+  const translate = useCallback(async (germanText, topicId = DEFAULT_TOPIC_ID) => {
     if (!germanText || !germanText.trim()) return null;
 
     const apiKey = (localStorage.getItem(GROQ_API_KEY_KEY) || '').trim();
@@ -37,6 +39,7 @@ function useGroqTranslation() {
     }
 
     const model = (localStorage.getItem(GROQ_MODEL_KEY) || FALLBACK_MODEL).trim();
+    const topic = getTopicById(topicId);
 
     // Cancel any in-flight request
     if (controllerRef.current) {
@@ -59,8 +62,7 @@ function useGroqTranslation() {
           messages: [
             {
               role: 'system',
-              content:
-                'You are a professional German to English translator. Translate the following German text to English. Return ONLY the English translation, nothing else.',
+              content: topic.systemPrompt,
             },
             {
               role: 'user',
@@ -81,7 +83,7 @@ function useGroqTranslation() {
       const data = await response.json();
       const translated = data?.choices?.[0]?.message?.content?.trim();
       if (translated) {
-        saveToHistory(germanText.trim(), translated);
+        saveToHistory(germanText.trim(), translated, topic.id);
       }
       return translated || null;
     } catch (err) {
