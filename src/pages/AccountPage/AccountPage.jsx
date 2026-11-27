@@ -8,7 +8,7 @@ const GROQ_MODEL_STORAGE = 'groqModel';
 const HISTORY_KEY = 'groqTranslationHistory';
 
 function AccountPage() {
-  const { user, logout } = useAuth();
+  const { user, token, logout, updateSettings } = useAuth();
   const navigate = useNavigate();
   const [apiKey, setApiKey] = useState('');
   const [saved, setSaved] = useState(false);
@@ -18,25 +18,53 @@ function AccountPage() {
   const [selectedModel, setSelectedModel] = useState('');
 
   useEffect(() => {
-    const storedKey = localStorage.getItem(GROQ_KEY_STORAGE) || '';
-    const storedModel = localStorage.getItem(GROQ_MODEL_STORAGE) || '';
+    const storedKey = user?.groqApiKey || localStorage.getItem(GROQ_KEY_STORAGE) || '';
+    const storedModel = user?.groqModel || localStorage.getItem(GROQ_MODEL_STORAGE) || '';
     setApiKey(storedKey);
     setSelectedModel(storedModel);
-    loadHistory();
-  }, []);
+  }, [user]);
 
-  function loadHistory() {
-    try {
-      const stored = localStorage.getItem(HISTORY_KEY);
-      setHistory(stored ? JSON.parse(stored) : []);
-    } catch {
-      setHistory([]);
+  useEffect(() => {
+    async function loadHistory() {
+      if (token) {
+        try {
+          const res = await fetch('/api/translations', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setHistory(data.translations || []);
+            return;
+          }
+        } catch {
+          // fall back to localStorage below
+        }
+      }
+      try {
+        const stored = localStorage.getItem(HISTORY_KEY);
+        setHistory(stored ? JSON.parse(stored) : []);
+      } catch {
+        setHistory([]);
+      }
     }
-  }
+    loadHistory();
+  }, [token]);
 
-  const handleSave = () => {
-    localStorage.setItem(GROQ_KEY_STORAGE, apiKey.trim());
-    if (selectedModel) localStorage.setItem(GROQ_MODEL_STORAGE, selectedModel);
+  const handleSave = async () => {
+    const trimmedKey = apiKey.trim();
+    const modelToSave = selectedModel || 'llama-3.1-8b-instant';
+    localStorage.setItem(GROQ_KEY_STORAGE, trimmedKey);
+    localStorage.setItem(GROQ_MODEL_STORAGE, modelToSave);
+
+    if (token) {
+      try {
+        await updateSettings({ groqApiKey: trimmedKey, groqModel: modelToSave });
+      } catch (err) {
+        setTestStatus({ error: err.message || 'Failed to save settings to server.' });
+        return;
+      }
+    }
+
     setSaved(true);
     setTestStatus(null);
     setTimeout(() => setSaved(false), 2500);
@@ -85,9 +113,19 @@ function AccountPage() {
     navigate('/auth');
   };
 
-  const handleClearHistory = () => {
+  const handleClearHistory = async () => {
     localStorage.removeItem(HISTORY_KEY);
     setHistory([]);
+    if (token) {
+      try {
+        await fetch('/api/translations', {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
+        // ignore network errors
+      }
+    }
   };
 
   const formatDate = (iso) => {

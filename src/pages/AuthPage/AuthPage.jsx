@@ -34,25 +34,26 @@ function AuthPage() {
       return;
     }
     setSiLoading(true);
-    // Simulate a small network delay for realism
-    await new Promise((r) => setTimeout(r, 400));
-    login(siEmail, siPassword);
-    navigate('/translate');
+    const result = await login(siEmail, siPassword);
     setSiLoading(false);
+    if (!result.success) {
+      setSiError(result.error);
+      return;
+    }
+    navigate('/translate');
   };
 
   const handleSignUp = async (e) => {
     e.preventDefault();
     setSuError('');
-    const result = signUp(suName, suEmail, suPassword, suConfirm);
+    setSuLoading(true);
+    const result = await signUp(suName, suEmail, suPassword, suConfirm);
+    setSuLoading(false);
     if (!result.success) {
       setSuError(result.error);
       return;
     }
-    setSuLoading(true);
-    await new Promise((r) => setTimeout(r, 400));
     navigate('/translate');
-    setSuLoading(false);
   };
 
   return (
@@ -116,9 +117,6 @@ function AuthPage() {
                 'Sign In'
               )}
             </button>
-            <p className={styles.hint}>
-              Any email & password combination works for this demo.
-            </p>
           </form>
         )}
 

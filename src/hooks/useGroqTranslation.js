@@ -22,6 +22,25 @@ function saveToHistory(german, english, topicId) {
   } catch {
     // ignore storage errors
   }
+
+  // Persist to MySQL backend if user is signed in
+  const token = localStorage.getItem('germanLiveToken');
+  if (token) {
+    fetch('/api/translations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        german,
+        english,
+        topic: topicId || DEFAULT_TOPIC_ID,
+      }),
+    }).catch(() => {
+      // ignore background sync errors
+    });
+  }
 }
 
 function useGroqTranslation() {
